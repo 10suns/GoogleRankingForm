@@ -6,6 +6,7 @@
 package googleranking.processing;
 
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
@@ -26,9 +27,8 @@ import org.apache.http.message.BasicNameValuePair;
  * @author tranthanhan
  */
 public class GoogleData {
-    private static final String GOOGLE_SEARCH_WEB = "https://www.google.com/search";
-    private static final int MAX_AMT_LINK_PER_PAGE = 10;
-    private static final int MAX_AMT_LINKS = 20;
+    private static final String MIDDLE_SERVER = "http://xymuqmc0.iqservs.jp/cgi-bin/getHTML.cgi";
+    private static final String GOOGLE_SEARCH_WEB = "http://www.google.co.jp/search";
 
     public String keyWord;
 
@@ -37,20 +37,30 @@ public class GoogleData {
     }
 
     public int getRankingForDomain(String Domain) {
-        List<String> fiftyFirstLinks = getFiftyFirstLinks();
-
-        return 1;
+        List<String> links = getLinksInPage();
+        return links.indexOf(Domain) + 1;
     }
 
-    public Document getGoogleHtml(int pageNumber) {
+    public Document getGoogleHtml() {
         Document doc;
         try {
-            URIBuilder builder = new URIBuilder(GOOGLE_SEARCH_WEB);
-            List<NameValuePair> query = new ArrayList<NameValuePair>(2);
-            query.add(new BasicNameValuePair("q", keyWord));
-            query.add(new BasicNameValuePair("start", Integer.toString((pageNumber - 1) * MAX_AMT_LINK_PER_PAGE)));
+            URIBuilder search_builder = new URIBuilder(GOOGLE_SEARCH_WEB);
+            List<NameValuePair> search_query = new ArrayList<NameValuePair>(2);
+            search_query.add(new BasicNameValuePair("pws", "0"));
+            search_query.add(new BasicNameValuePair("filter", "1"));
+            search_query.add(new BasicNameValuePair("hl", "jp"));
+            search_query.add(new BasicNameValuePair("num", Integer.toString(50)));
+            search_query.add(new BasicNameValuePair("q", keyWord));
+            search_query.add(new BasicNameValuePair("start", "0"));
 
-            String url = builder.addParameters(query).build().toString();
+            String search_url = search_builder.addParameters(search_query).build().toString();
+
+            URIBuilder middle_builder = new URIBuilder(MIDDLE_SERVER);
+            List<NameValuePair> middle_query = new ArrayList<NameValuePair>(2);
+            middle_query.add(new BasicNameValuePair("url", search_url));
+            middle_query.add(new BasicNameValuePair("ip", "49.212.93.235"));
+
+            String url = middle_builder.addParameters(middle_query).build().toString();
 
             return Jsoup.connect(url).userAgent("Mozilla").get();
         } catch (IOException ex) {
@@ -61,8 +71,8 @@ public class GoogleData {
         return null;
     }
 
-    public List<String> getLinksInPage(int pageNumber) {
-        Document doc = getGoogleHtml(pageNumber);
+    public List<String> getLinksInPage() {
+        Document doc = getGoogleHtml();
         List<String> ret = new ArrayList<String>();
         try {
             Elements links = doc.select(".g>.r>a");
@@ -70,35 +80,18 @@ public class GoogleData {
                 String url = link.absUrl("href");
                 url = URLDecoder.decode(url.substring(url.indexOf("=") +1, url.indexOf("&")), "UTF-8");
                 if(url.startsWith("http") || url.startsWith("https")){
-                    ret.add(url); // Ads/news/etc
+                    ret.add(getDomain(url)); // Ads/news/etc
                 }
             }
-            return ret;
         } catch (Exception e) {
             Logger.getLogger(GoogleData.class.getName()).log(Level.SEVERE, null, e);
         }
         return ret;
     }
 
-    public List<String> getFiftyFirstLinks() {
-        List<String> ret = new ArrayList<String>();
-        int pageNumber = 1;
-        while(ret.size() < MAX_AMT_LINKS){
-            List<String> tmp = getLinksInPage(pageNumber);
-
-            if (MAX_AMT_LINKS - ret.size() > MAX_AMT_LINK_PER_PAGE) {
-                ret.addAll(tmp);
-            } else {
-                ret.addAll(tmp.subList(0, MAX_AMT_LINKS - ret.size()));
-            }
-            pageNumber++;
-            
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        return ret;
+    private String getDomain(String url) throws URISyntaxException{
+        URI uri = new URI(url);
+        String domain = uri.getHost();
+        return domain;
     }
 }
